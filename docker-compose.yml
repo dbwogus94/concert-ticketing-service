@@ -1,31 +1,46 @@
 version: '3.8'
 
+networks:
+  conccert_net:
+    driver: bridge
+  kafka-network:
+    driver: bridge
+
 services:
   redis:
-    image: redis:6.2.6-alpine
+    image: redis:7.2
     container_name: redis
+    restart: always
+    networks: 
+      - conccert_net
     ports: # 바인딩할 포트:내부 포트
       - 6379:6379
-    environment:
-      - REDIS_ARGS=--save 60 1000 --appendonly yes # 데이터 지속성을 위한 설정
-      # - REDISTIMESERIES_ARGS=RETENTION_POLICY=20 # 시계열 데이터 보존 정책
     volumes: # 마운트할 볼륨 설정
       - ./docker-volumes/redis:/data
       - ./docker-volumes/redis/conf.d/redis.conf:/usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_ARGS=--save 60 1000 --appendonly yes # 데이터 지속성을 위한 설정
+      # - REDISTIMESERIES_ARGS=RETENTION_POLICY=20 # 시계열 데이터 보존 정책
     command: redis-server /usr/local/etc/redis/redis.conf
-
-    networks:
-      - db_net
-    restart: always
 
   # service-1
   mysql:
-    image: mysql:8.0.17
     platform: linux/amd64
+    image: mysql:8.0.17
     container_name: mysql
+    networks: 
+      - conccert_net
+    restart: always
     # 접근 포트 (컨테이너 외부: 컨테이너 내부)
     ports:
       - 13306:3306
+    volumes:
+      # 설정 디렉토리 전체를 사용
+      - ./docker-volumes/mysql/conf.d/my.cnf:/etc/mysql/conf.d/my.cnf
+      # 초기화 SQL 스크립트 위치
+      - ./docker-volumes/mysql/init:/docker-entrypoint-initdb.d
+      # 컨테이너의 데이터 로컬로 마운트
+      - ./docker-volumes/mysql/data:/var/lib/mysql
     environment:
       - MYSQL_DATABASE=mysql
       - MYSQL_ROOT_PASSWORD=root1234
@@ -36,105 +51,204 @@ services:
     # command:
     #   - --ssl=0
     #   - --require_secure_transport=OFF
-    volumes:
-      # 설정 디렉토리 전체를 사용
-      - ./docker-volumes/mysql/conf.d/my.cnf:/etc/mysql/conf.d/my.cnf
-      # 초기화 SQL 스크립트 위치
-      - ./docker-volumes/mysql/init:/docker-entrypoint-initdb.d
-      # 컨테이너의 데이터 로컬로 마운트
-      - ./docker-volumes/mysql/data:/var/lib/mysql
-    networks:
-      - db_net
-    restart: always
 
   kafka-0:
-    image: bitnami/kafka:3.7
+    image: bitnami/kafka:3.8
+    container_name: kafka-0
+    networks: 
+      - kafka-network
+    restart: always
     ports:
       - '9094:9094'
+      - '5556:5556'
+    volumes:
+      - ./docker-volumes/kafka:/bitnami/kafka
+      - ./docker-volumes/kafka/jmx-exporter/jmx_prometheus_javaagent-1.0.1.jar:/usr/local/share/jmx_prometheus_javaagent.jar
+      - ./docker-volumes/kafka/jmx-exporter/config.yml:/opt/jmx-exporter/config.yml
+      # - ./kafka-env.sh:/opt/bitnami/kafka/scripts/kafka-env.sh
+      # - ./kraft:/opt/bitnami/kafka/config/kraft
+      # - ./log4j.properties:/opt/bitnami/kafka/config/log4j.properties
     environment:
-      # KRaft 설정
-      KAFKA_KRAFT_CLUSTER_ID: z6sXmGHyR1qVTyyl9XXr0g
-      KAFKA_CFG_PROCESS_ROLES: controller,broker
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka-0:9093
+      # Kafka 브로커 토픽 자동 생성을 활성화하는지 여부 (true 또는 false)
+      # - 클라이언트가 존재하지 않는 토픽에 메시지를 게시하거나 구독하려고 할 때 토픽을 자동으로 생성할지 여부를 나타낸다. 테스트 목적으로 true로 설정
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true
+
+      # JMX 설정 추가
+      # 1) Java Agent 방식에서 설정, 
+      # "-javaagent:${실행될 에이전트 jmx_prometheus_javaagent.jar}=${내보낼 port}:${매트릭 룰 설정 파일}"
+      KAFKA_OPTS: "-javaagent:/usr/local/share/jmx_prometheus_javaagent.jar=5556:/opt/jmx-exporter/config.yml"
+      #  2) 독립 실행형 방식에서 설정
+      # KAFKA_JMX_OPTS: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=kafka-0 -Dcom.sun.management.jmxremote.rmi.port=5555"
+      # JMX_PORT: 5555
+
+
+      #######################
+      ###### KRAFT 설정 ######
+      #######################
+      # 고유 식별자 설정
+      KAFKA_CFG_BROKER_ID: 0
       KAFKA_CFG_NODE_ID: 0
 
-      # 리스너 설정
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://:9092,EXTERNAL://localhost:9094
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      # 클러스터 설정 (공유 클러스터) - 모든 브로커가 같은 클러스터 ID를 공유해서 클러스터로 인식되도록 설정 (22글자로 맞춰줘야함)
+      # Kafka Raft Mode 를 사용할 때는 클러스터 ID를 설정해야함
+      KAFKA_KRAFT_CLUSTER_ID: MyKafkaKraftClusterIDv
+      # 컨트롤러 쿼럼 설정 (이 Raft 클러스터의 컨트롤러 쿼럼 구성원을 지정합니다.) - 클러스터 내의 모든 브로커가 컨트롤러 역할을 수행할 수 있음을 나타낸다.
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka-0:9093 #,1@Kafka01Service:9093,2@Kafka02Service:9093
+      # 브로커가 수행할 역할 정의 (controller, broker)
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+
+
+      ##########################
+      ##### 리스너 지시자 설정 #####
+      ##########################
+      # KRaft 모드에서 컨트롤러 노드 간의 통신에 사용할 리스너를 지정.
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Kafka 브로커들이 서로 통신할 때 사용할 리스너를 지정합니다
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
 
-      # 클러스터 설정
-      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: 1
-      KAFKA_CFG_MIN_INSYNC_REPLICAS: 1
-      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
-    volumes:
-      - ./docker-volumes/kafka:/bitnami
-    networks:
-      - kafka-network
+      ##########################
+      ###### LISTENER 설정 ######
+      ##########################
+      # - 컨트롤러 브로커가 다른 브로커와 통신할 때 : 0.0.0.0:9093 사용
+      # - 클라이언트와의 통신 및 브로커 간의 기본 통신: 0.0.0.0:9092 사용
 
+      # 평문 통신을 허용하는지 여부 (yes 또는 no) - kafka는 통신을 암호화하기 위해 SSL/TLS를 사용할 수 있지만, 테스트 목적으로 평문 통신을 허용할 수 있다.
+      ALLOW_PLAINTEXT_LISTENER: yes
+
+      # 리스너 설정 -> 내부 통신용 (PLAINTEXT - 9092), 컨트롤러용 (CONTROLLER - 9093), 외부 접속용 (EXTERNAL - 9094)
+      # - PLAINTEXT://:9092: 브로커 간 내부 통신용
+      # - CONTROLLER://:9093: 컨트롤러 통신용
+      # - EXTERNAL://:9094: 외부 클라이언트 통신용
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+
+      # KAFKA_CFG_ADVERTISED_LISTENERS
+      # - PLAINTEXT://kafka-0:9092: 다른 브로커들이 접근할 수 있는 내부 주소
+      # - EXTERNAL://localhost:9094: 외부 클라이언트가 접근할 수 있는 주소
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-0:9092,EXTERNAL://localhost:9094
+      # 모든 리스너가 암호화되지 않은 PLAINTEXT 프로토콜을 사용하도록 설정:
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+
+      ############################
+      ###### CLUSTERING 설정 ######
+      ############################
+      # 트랜잭션, Offset, Replication_Factor, ISR 설정 - 데이터의 내구성과 가용성을 보장하기 위해 설정
+      
+      # "기본 복제" 복제 설정. 토픽이 생성될 때 기본 복제 인수를 사용함.
+      # - 기본 복제, 값을 3으로 설정하면 새로운 토픽이 생성될 때 기본적으로 3개의 브로커에 저장됨.
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: 1
+
+      # "오프셋 토픽" 복제 설정. 오프셋 토픽은 컨슈머 그룹이 각 파티션의 현재 오프셋(마지막으로 읽은 위치)을 저장하는 데 사용됨.
+      # - 오프셋 토픽의 복제, 값을 3으로 설정하면 오프셋 토픽의 각 파티션이 3개의 브로커에 복제됨.
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+      # "트랜잭션 상태 로그" 복제 설정. 트랜잭션 상태 로그는 트랜잭션 상태를 저장하는 데 사용됨.
+      # - 트랜잭션 상태 로그의 복제, 값을 3으로 설정하면 트랜잭션 상태 로그의 각 파티션이 3개의 브로커에 복제됨.
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      
+      # 트랜잭션 상태 로그의 최소 ISR (In-Sync Replica, 동기화 된 복제본) 수 설정.
+      # - 트랜잭션의 안정성을 보장하기 위한 최소한의 복제본 수를 정의
+      # - 트랜잭션 상태 로그의 최소 ISR 수를 2로 설정하면 트랜잭션 상태 로그의 각 파티션이 최소 2개의 동기화된 복제본을 가져야 함을 의미.
+      # - ISR 의 수가 설정된 최소 ISR 수보다 작아지면 해당 파티션에 새로운 메시지를 쓰지 않음.
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 2
+
+      # 토픽 생성 시 기본적으로 설정되는 파티션의 개수(한 번 생성되면 줄일 수 없다.)
+      KAFKA_NUM_PARTITIONS: 2
+    
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    networks: 
+      - kafka-network
+    restart: always
     ports:
       - '9091:8080'
     depends_on:
       - kafka-0
     environment:
-      - KAFKA_CLUSTERS_0_NAME=KRaft Cluster
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka-0:9092
+      - KAFKA_CLUSTERS_0_NAME=Local-Kraft-Cluster
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka-0:9092 # 내부 통신
       - DYNAMIC_CONFIG_ENABLED=true
-    networks:
-      - kafka-network
+      # Kafka 클러스터의 작업들을 감사 토픽에 기록할지 여부를 설정
+      - KAFKA_CLUSTERS_0_AUDIT_TOPICAUDITENABLED=true
+      # Kafka 클러스터의 감사 로그를 콘솔에 출력할지 여부를 설정
+      - KAFKA_CLUSTERS_0_AUDIT_CONSOLEAUDITENABLED=true
 
-  # kafdrop:
-  #   image: obsidiandynamics/kafdrop:latest
+  kafka-exporter:
+    image: bitnami/kafka-exporter:1.7.0
+    container_name: kafka-exporter
+    networks: 
+      - kafka-network
+    restart: always
+    ports:
+      - '9308:9308'
+    depends_on:
+      - kafka-0
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    networks: 
+      - kafka-network
+    ports:
+      - '9090:9090'
+    depends_on:
+      - kafka-0
+    volumes:
+      - ./docker-volumes/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    networks: 
+      - kafka-network
+    ports:
+      - '80:3000'
+    volumes:
+       - ./docker-volumes/grafana:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+
+
+    environment:
+      - KAFKA_BROKERS=kafka-0:9092
+      - LOG_LEVEL=INFO
+      - kafka-0
+
+    command: [
+        '--kafka.server=kafka-0:9092',
+      ]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    platform: linux/aarch64  # Mac M1/M2의 경우 필수
+    privileged: true
+    container_name: cadvisor
+    networks:
+       - kafka-network
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # kafka JMX 수집 방법은 2가지가 있다, 1) Java Agent 방식, 2) 독립 실행형 방식
+  ## 2) 아래의 독립실행형의 경우 더 적은 데이터 수집과 네트워크가 발생하기 떄문에 오버헤드가 크다. 
+  # jmx-exporter:
+  #   image: sscaling/jmx-prometheus-exporter
   #   platform: linux/amd64
+  #   container_name: jmx-exporter
+  #   networks: 
+  #     - kafka-network
+  #   restart: always
+  #   volumes:
+  #     - ./docker-volumes/jmx-exporter/config.yml:/opt/jmx-exporter/config.yml
   #   ports:
-  #     - '9090:9000'
+  #     - '5556:5556'
   #   depends_on:
   #     - kafka-0
-  #   environment:
-  #     - KAFKA_BROKERCONNECT=kafka-0:9092
-  #     - JVM_OPTS=-Xms32M -Xmx64M
-  #     - SERVER_SERVLET_CONTEXTPATH=/
-  #   networks:
-  #     - kafka-network
 
-  # influxdb:
-  #   image: influxdb:1.8-alpine
-  #   platform: linux/amd64
-  #   container_name: influxdb
-  #   ports:
-  #     - '8086:8086'
-  #   environment:
-  #     - INFLUXDB_DB=k6
-  #     - INFLUXDB_HTTP_BIND_ADDRESS=:8086
-  #   volumes:
-  #     - ./docker-volumes/influxdb:/var/lib/influxdb
-  #   networks:
-  #     - k6_load_test
-
-  # grafana:
-  #   image: grafana/grafana
-  #   platform: linux/amd64
-  #   container_name: grafana
-  #   depends_on:
-  #     - influxdb
-  #   ports:
-  #     - '4000:4000'
-  #   environment:
-  #     - GF_SECURITY_ADMIN_PASSWORD=admin # 기본 로그인 정보 설정
-  #     - GF_SECURITY_ADMIN_USER=admin
-  #   volumes:
-  #     - ./docker-volumes/grafana:/var/lib/grafana
-  #   networks:
-  #     - k6_load_test
-
-networks:
-  db_net:
-    driver: bridge
-  kafka-network:
-    driver: bridge
