@@ -3,7 +3,7 @@ version: '3.8'
 networks:
   conccert_net:
     driver: bridge
-  kafka-network:
+  kafka_net:
     driver: bridge
 
 services:
@@ -56,7 +56,7 @@ services:
     image: bitnami/kafka:3.8
     container_name: kafka-0
     networks: 
-      - kafka-network
+      - kafka_net
     restart: always
     ports:
       - '9094:9094'
@@ -158,7 +158,7 @@ services:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     networks: 
-      - kafka-network
+      - kafka_net
     restart: always
     ports:
       - '9091:8080'
@@ -177,18 +177,26 @@ services:
     image: bitnami/kafka-exporter:1.7.0
     container_name: kafka-exporter
     networks: 
-      - kafka-network
+      - kafka_net
     restart: always
     ports:
       - '9308:9308'
     depends_on:
       - kafka-0
+    environment:
+      - KAFKA_BROKERS=kafka-0:9092
+      - LOG_LEVEL=INFO
+      - kafka-0
+    command: [
+        '--kafka.server=kafka-0:9092',
+      ]
+
 
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     networks: 
-      - kafka-network
+      - kafka_net
     ports:
       - '9090:9090'
     depends_on:
@@ -200,7 +208,7 @@ services:
     image: grafana/grafana:latest
     container_name: grafana
     networks: 
-      - kafka-network
+      - kafka_net
     ports:
       - '80:3000'
     volumes:
@@ -208,24 +216,13 @@ services:
     depends_on:
       - prometheus
 
-
-
-    environment:
-      - KAFKA_BROKERS=kafka-0:9092
-      - LOG_LEVEL=INFO
-      - kafka-0
-
-    command: [
-        '--kafka.server=kafka-0:9092',
-      ]
-
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     platform: linux/aarch64  # Mac M1/M2의 경우 필수
     privileged: true
     container_name: cadvisor
     networks:
-       - kafka-network
+       - kafka_net
     restart: always
     ports:
       - "8080:8080"
@@ -243,7 +240,7 @@ services:
   #   platform: linux/amd64
   #   container_name: jmx-exporter
   #   networks: 
-  #     - kafka-network
+  #     - kaf_a-n
   #   restart: always
   #   volumes:
   #     - ./docker-volumes/jmx-exporter/config.yml:/opt/jmx-exporter/config.yml
