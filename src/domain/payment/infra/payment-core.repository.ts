@@ -46,10 +46,13 @@ export class PaymentCoreRepository extends PaymentRepository {
     return outbox;
   }
 
-  override async getOutboxes(): Promise<PaymentOutboxEntity[]> {
+  override async getOutboxes(
+    options: FindOutboxByOptions,
+  ): Promise<PaymentOutboxEntity[]> {
     return await this.outboxRepo.find({
       take: 100,
       order: { transactionId: 'ASC' },
+      where: options,
     });
   }
 }

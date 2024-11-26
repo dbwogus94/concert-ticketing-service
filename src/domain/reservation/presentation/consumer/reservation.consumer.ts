@@ -25,8 +25,8 @@ export class ReservationConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
-    const topics = ['payment.pay.topic'];
-    topics.forEach((topic) => this.kafkaClient.subscribeToResponseOf(topic));
+    // const topics = ['payment.pay.topic'];
+    // topics.forEach((topic) => this.kafkaClient.subscribeToResponseOf(topic));
     await this.kafkaClient.connect();
   }
 

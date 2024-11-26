@@ -76,10 +76,13 @@ export class ReservationCoreRepository extends ReservationRepository {
     return outbox;
   }
 
-  override async getOutboxes(): Promise<ReservationOutboxEntity[]> {
+  override async getOutboxes(
+    options: FindOutboxByOptions,
+  ): Promise<ReservationOutboxEntity[]> {
     return await this.outboxRepo.find({
       take: 100,
       order: { transactionId: 'ASC' },
+      where: options,
     });
   }
 }

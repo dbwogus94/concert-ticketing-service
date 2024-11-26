@@ -45,4 +45,5 @@ lerna-debug.log*
 *.db
 
 
-**/docker-volumes
+**/data
+**/grafana

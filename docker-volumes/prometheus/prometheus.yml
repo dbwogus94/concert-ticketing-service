@@ -1,0 +1,56 @@
+## 참고: https://docs.docker.com/engine/daemon/prometheus/#create-a-prometheus-configuration
+
+global:
+  scrape_interval: 15s # 스크랩 주기를 15초로 설정. 기본값은 1분.
+  evaluation_interval: 15s # 규칙 평가 주기를 15초로 설정. 기본값은 1분.
+  # scrape_timeout은 기본값 (10초)로 설정됨.
+
+  # 외부 시스템(페더레이션, 원격 저장소, Alertmanager)과 통신할 때 타임 시리즈나 알림에 이 레이블을 첨부.
+  external_labels:
+    monitor: 'codelab-monitor'
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+# Prometheus가 정기적으로 로드하고 평가할 규칙 파일 경로를 지정합니다. 여기서는 주석 처리되어 있으며 비활성화 상태입니다.
+rule_files:
+  # - "first.rules"
+  # - "second.rules"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # 이 설정은 Prometheus 서버가 자신의 /metrics 엔드포인트에서 메트릭을 수집한다는 의미 (말 그대로 본인이 정상적으로 작동하는지 확인).
+  - job_name: prometheus
+    # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Kafka Exporter의 메트릭을 수집하는 설정
+  - job_name: kafka-exporter
+    # metrics_path 기본값은 '/metrics'
+
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+
+  # 2) 독립실행형, JMX Exporter의 메트릭을 수집하는 설정
+  # - job_name: jmx-exporter
+  #   # metrics_path 기본값은 '/metrics'
+
+  #   static_configs:
+  #     - targets: ['jmx-exporter:5556']
+
+  # Google이 개발한 오픈소스 컨테이너 모니터링 수집기를 사용한 컨테이너 메트릭 수집
+  - job_name: cadvisor
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  - job_name: kafka
+    static_configs:
+      - targets: ['kafka-0:5556']
+
+  # Docker 데몬에서 메트릭 수집하는 설정, 추가 설정이 필요하다.
+  # Docker 컨테이너에 대한 메트릭을 Prometheus가 수집. 이 메트릭에는 컨테이너의 CPU 사용량, 메모리 사용량, 네트워크 트래픽, 디스크 I/O 등의 리소스 사용 정보가 포함.
+  # - job_name: docker
+  # metrics_path defaults to '/metrics'
+  # scheme defaults to 'http'.
+  # static_configs:
+  # - targets: ['host.docker.internal:9323']

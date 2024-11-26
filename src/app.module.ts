@@ -49,6 +49,7 @@ const clientRedis = new Redis({ db: 1 });
             },
             consumer: {
               groupId: 'concert-consumer',
+              heartbeatInterval: 3000 * 3, // 주기가 짧을 수록 리벨런싱 속도가 빠르다
               retry: {
                 retries: 2,
               },

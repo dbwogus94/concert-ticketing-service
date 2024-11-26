@@ -36,7 +36,7 @@ export class QueueSchedule implements OnApplicationBootstrap {
     name: QueueSchedule.JOB.CHANGE_QUEUE_ACTIVE_STATUS,
   })
   async changeQueueActiveStatus() {
-    this.logger.warn(`[${QueueSchedule.JOB.CHANGE_QUEUE_ACTIVE_STATUS}] start`);
+    // this.logger.warn(`[${QueueSchedule.JOB.CHANGE_QUEUE_ACTIVE_STATUS}] start`);
 
     const job = this.schedulerRegistry.getCronJob(
       QueueSchedule.JOB.CHANGE_QUEUE_ACTIVE_STATUS,
@@ -49,7 +49,7 @@ export class QueueSchedule implements OnApplicationBootstrap {
     } catch (error) {
       this.logger.error(error as Error);
     }
-    this.logger.warn(`[${QueueSchedule.JOB.CHANGE_QUEUE_ACTIVE_STATUS}] end`);
+    // this.logger.warn(`[${QueueSchedule.JOB.CHANGE_QUEUE_ACTIVE_STATUS}] end`);
 
     job.start();
   }
