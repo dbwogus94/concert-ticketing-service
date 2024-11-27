@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    networks:
+      - conccert_net
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./docker-volumes/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    networks:
+      - conccert_net
+    ports:
+      - '80:3000'
+    volumes:
+      - ./docker-volumes/grafana:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    platform: linux/aarch64 # Mac M1/M2의 경우 필수
+    privileged: true
+    container_name: cadvisor
+    networks:
+      - conccert_net
+    restart: always
+    ports:
+      - '8080:8080'
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # kafka JMX 수집 방법은 2가지가 있다, 1) Java Agent 방식, 2) 독립 실행형 방식
+  ## 2) 아래의 독립실행형의 경우 더 적은 데이터 수집과 네트워크가 발생하기 떄문에 오버헤드가 크다.
+  # jmx-exporter:
+  #   image: sscaling/jmx-prometheus-exporter
+  #   platform: linux/amd64
+  #   container_name: jmx-exporter
+  #   networks:
+  #     - conccert_net:
+  #   restart: always
+  #   volumes:
+  #     - ./docker-volumes/jmx-exporter/config.yml:/opt/jmx-exporter/config.yml
+  #   ports:
+  #     - '5556:5556'
+  #   depends_on:
+  #     - kafka-0

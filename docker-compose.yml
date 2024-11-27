@@ -3,8 +3,6 @@ version: '3.8'
 networks:
   conccert_net:
     driver: bridge
-  kafka_net:
-    driver: bridge
 
 services:
   redis:
@@ -16,7 +14,7 @@ services:
     ports: # 바인딩할 포트:내부 포트
       - 6379:6379
     volumes: # 마운트할 볼륨 설정
-      - ./docker-volumes/redis:/data
+      - ./docker-volumes/redis/data:/data
       - ./docker-volumes/redis/conf.d/redis.conf:/usr/local/etc/redis/redis.conf
     environment:
       - REDIS_ARGS=--save 60 1000 --appendonly yes # 데이터 지속성을 위한 설정
@@ -56,7 +54,7 @@ services:
     image: bitnami/kafka:3.8
     container_name: kafka-0
     networks: 
-      - kafka_net
+      - conccert_net
     restart: always
     ports:
       - '9094:9094'
@@ -158,7 +156,7 @@ services:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     networks: 
-      - kafka_net
+      - conccert_net
     restart: always
     ports:
       - '9091:8080'
@@ -177,7 +175,7 @@ services:
     image: bitnami/kafka-exporter:1.7.0
     container_name: kafka-exporter
     networks: 
-      - kafka_net
+      - conccert_net
     restart: always
     ports:
       - '9308:9308'
@@ -190,62 +188,3 @@ services:
     command: [
         '--kafka.server=kafka-0:9092',
       ]
-
-
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    networks: 
-      - kafka_net
-    ports:
-      - '9090:9090'
-    depends_on:
-      - kafka-0
-    volumes:
-      - ./docker-volumes/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    networks: 
-      - kafka_net
-    ports:
-      - '80:3000'
-    volumes:
-       - ./docker-volumes/grafana:/var/lib/grafana
-    depends_on:
-      - prometheus
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    platform: linux/aarch64  # Mac M1/M2의 경우 필수
-    privileged: true
-    container_name: cadvisor
-    networks:
-       - kafka_net
-    restart: always
-    ports:
-      - "8080:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:rw
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-
-  # kafka JMX 수집 방법은 2가지가 있다, 1) Java Agent 방식, 2) 독립 실행형 방식
-  ## 2) 아래의 독립실행형의 경우 더 적은 데이터 수집과 네트워크가 발생하기 떄문에 오버헤드가 크다. 
-  # jmx-exporter:
-  #   image: sscaling/jmx-prometheus-exporter
-  #   platform: linux/amd64
-  #   container_name: jmx-exporter
-  #   networks: 
-  #     - kaf_a-n
-  #   restart: always
-  #   volumes:
-  #     - ./docker-volumes/jmx-exporter/config.yml:/opt/jmx-exporter/config.yml
-  #   ports:
-  #     - '5556:5556'
-  #   depends_on:
-  #     - kafka-0
-
