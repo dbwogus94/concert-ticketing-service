@@ -24,12 +24,31 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
+  # Google이 개발한 오픈소스 컨테이너 모니터링 수집기를 사용한 컨테이너 메트릭 수집
+  - job_name: cadvisor
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # Redis Exporter 메트릭 수집 설정
+  - job_name: redis-exporter
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # MySQL Exporter 메트릭 수집 설정
+  - job_name: mysql-exporter
+    static_configs:
+      - targets: ['mysql-exporter:9104']
+
   # Kafka Exporter의 메트릭을 수집하는 설정
   - job_name: kafka-exporter
     # metrics_path 기본값은 '/metrics'
-
     static_configs:
       - targets: ['kafka-exporter:9308']
+
+  # 1) Java Agent 방식을 사용하기 때문에 kafka 컨테이너 내부에서 직접 수집기가 돌아간다.
+  - job_name: kafka
+    static_configs:
+      - targets: ['kafka-0:5556']
 
   # 2) 독립실행형, JMX Exporter의 메트릭을 수집하는 설정
   # - job_name: jmx-exporter
@@ -37,15 +56,6 @@ scrape_configs:
 
   #   static_configs:
   #     - targets: ['jmx-exporter:5556']
-
-  # Google이 개발한 오픈소스 컨테이너 모니터링 수집기를 사용한 컨테이너 메트릭 수집
-  - job_name: cadvisor
-    static_configs:
-      - targets: ['cadvisor:8080']
-
-  - job_name: kafka
-    static_configs:
-      - targets: ['kafka-0:5556']
 
   # Docker 데몬에서 메트릭 수집하는 설정, 추가 설정이 필요하다.
   # Docker 컨테이너에 대한 메트릭을 Prometheus가 수집. 이 메트릭에는 컨테이너의 CPU 사용량, 메모리 사용량, 네트워크 트래픽, 디스크 I/O 등의 리소스 사용 정보가 포함.

@@ -1,7 +1,7 @@
 version: '3.8'
 
 networks:
-  conccert_net:
+  concert_net:
     driver: bridge
 
 services:
@@ -10,7 +10,7 @@ services:
     container_name: redis
     restart: always
     networks: 
-      - conccert_net
+      - concert_net
     ports: # 바인딩할 포트:내부 포트
       - 6379:6379
     volumes: # 마운트할 볼륨 설정
@@ -27,7 +27,7 @@ services:
     image: mysql:8.0.17
     container_name: mysql
     networks: 
-      - conccert_net
+      - concert_net
     restart: always
     # 접근 포트 (컨테이너 외부: 컨테이너 내부)
     ports:
@@ -54,7 +54,7 @@ services:
     image: bitnami/kafka:3.8
     container_name: kafka-0
     networks: 
-      - conccert_net
+      - concert_net
     restart: always
     ports:
       - '9094:9094'
@@ -156,7 +156,7 @@ services:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     networks: 
-      - conccert_net
+      - concert_net
     restart: always
     ports:
       - '9091:8080'
@@ -171,20 +171,4 @@ services:
       # Kafka 클러스터의 감사 로그를 콘솔에 출력할지 여부를 설정
       - KAFKA_CLUSTERS_0_AUDIT_CONSOLEAUDITENABLED=true
 
-  kafka-exporter:
-    image: bitnami/kafka-exporter:1.7.0
-    container_name: kafka-exporter
-    networks: 
-      - conccert_net
-    restart: always
-    ports:
-      - '9308:9308'
-    depends_on:
-      - kafka-0
-    environment:
-      - KAFKA_BROKERS=kafka-0:9092
-      - LOG_LEVEL=INFO
-      - kafka-0
-    command: [
-        '--kafka.server=kafka-0:9092',
-      ]
+  

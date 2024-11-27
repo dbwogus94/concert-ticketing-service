@@ -5,17 +5,22 @@ services:
     image: prom/prometheus:latest
     container_name: prometheus
     networks:
-      - conccert_net
+      - concert_net
     ports:
       - '9090:9090'
     volumes:
       - ./docker-volumes/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - cadvisor
+      - redis-exporter
+      - mysql-exporter
+      - kafka-exporter
 
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     networks:
-      - conccert_net
+      - concert_net
     ports:
       - '80:3000'
     volumes:
@@ -23,22 +28,75 @@ services:
     depends_on:
       - prometheus
 
+  # 컨테이너 메트릭 수집기, 사용하지 않으면 컨테이너 매트릭을 하나하나 외부로 노출해서 수집해야한다.
+  # 리눅스에서 올리는 컨테이너 환경이 아니라면 메트릭 수집에서 제한이 발생한다.
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
-    platform: linux/aarch64 # Mac M1/M2의 경우 필수
+    platform: linux/aarch64  # M1/M2 Mac 필수
     privileged: true
     container_name: cadvisor
     networks:
-      - conccert_net
+      - concert_net
     restart: always
     ports:
       - '8080:8080'
-    volumes:
+    volumes: # os별로 조금 바뀌는 부분이 있다
       - /:/rootfs:ro
       - /var/run:/var/run:rw
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /tmp/docker.sock:/var/run/docker.sock:ro  # Mac OS용 Docker 소켓 경로
+      - /etc/machine-id:/etc/machine-id:ro
+      - /var/lib/dbus/machine-id:/var/lib/dbus/machine-id:ro
+
+  redis-exporter:
+    image: oliver006/redis_exporter
+    container_name: redis-exporter
+    networks:
+      - concert_net
+    restart: always
+    ports:
+      - "9121:9121"
+    depends_on:
+      - redis
+    environment:
+      # REDIS_ADDR=${컨테이너 서비스명}:${docker network 내부포트}
+      - REDIS_ADDR=redis:6379
+
+  mysql-exporter:
+    image: prom/mysqld-exporter
+    container_name: mysql-exporter
+    networks:
+      - concert_net
+    restart: always
+    ports:
+      - "9104:9104"
+    depends_on:
+      - mysql
+    command:
+      - "--mysqld.username=tester:tester1234"
+      # --mysqld.address=${컨테이너 서비스명}:${docker network 내부포트}
+      - "--mysqld.address=mysql:3306"
+      
+  kafka-exporter:
+    image: bitnami/kafka-exporter:1.7.0
+    container_name: kafka-exporter
+    networks: 
+      - concert_net
+    restart: always
+    ports:
+      - '9308:9308'
+    depends_on:
+      - kafka-0
+    environment:
+      - KAFKA_BROKERS=kafka-0:9092
+      - LOG_LEVEL=INFO
+      - kafka-0
+    command: [
+        '--kafka.server=kafka-0:9092',
+      ]
+
+
 
   # kafka JMX 수집 방법은 2가지가 있다, 1) Java Agent 방식, 2) 독립 실행형 방식
   ## 2) 아래의 독립실행형의 경우 더 적은 데이터 수집과 네트워크가 발생하기 떄문에 오버헤드가 크다.
@@ -47,7 +105,7 @@ services:
   #   platform: linux/amd64
   #   container_name: jmx-exporter
   #   networks:
-  #     - conccert_net:
+  #     - concert_net:
   #   restart: always
   #   volumes:
   #     - ./docker-volumes/jmx-exporter/config.yml:/opt/jmx-exporter/config.yml
