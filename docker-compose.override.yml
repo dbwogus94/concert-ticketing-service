@@ -96,7 +96,20 @@ services:
         '--kafka.server=kafka-0:9092',
       ]
 
-
+  influxdb:
+    image: influxdb:1.8
+    container_name: influxdb
+    networks: 
+      - concert_net
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=k6
+      - INFLUXDB_HTTP_AUTH_ENABLED=false
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=admin123
+    volumes:
+      - ./docker-volumes/influxdb/data:/var/lib/influxdb
 
   # kafka JMX 수집 방법은 2가지가 있다, 1) Java Agent 방식, 2) 독립 실행형 방식
   ## 2) 아래의 독립실행형의 경우 더 적은 데이터 수집과 네트워크가 발생하기 떄문에 오버헤드가 크다.
